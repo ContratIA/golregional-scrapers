@@ -12,8 +12,8 @@ on:
         default: "1"
 
 concurrency:
-  # Mismo grupo que los jobs de base de scrape-rffm.yml; no bloquea el directo de senior.
-  group: scrape-rffm-base
+  # Grupo propio: no bloquea ni el directo de senior ni el de base (scrape-rffm-base), que corren en paralelo.
+  group: scrape-rffm-base-chain
   cancel-in-progress: false
 
 permissions:
