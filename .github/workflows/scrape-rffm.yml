@@ -1,0 +1,119 @@
+name: "Ingesta RFFM (Madrid, senior, femenino y base)"
+
+# GitHub Actions usa UTC y su cron es "best effort": en los minutos :00 y :30 descarta o retrasa
+# ejecuciones en horas de carga (el 19-09-2026 solo se disparó 1 de ~12 "live"). Por eso todos los
+# horarios usan minutos desfasados y cada franja se programa en las horas UTC de CET y CEST;
+# el paso "guardia" solo continúa si la hora de Madrid es la correcta.
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Job
+        type: choice
+        options: [daily, live, hot, closing, calendar, structure, crests, base_structure, base_daily, base_closing, base_live, base_calendar]
+        default: daily
+
+concurrency:
+  # `hot` es un bucle de ~25 min: grupo propio para que no bloquee daily/live/closing.
+  # Los jobs de base duran hasta ~75 min: con grupo propio no bloquean el live de senior (que se encolaría y se descartaría).
+  group: scrape-rffm${{ inputs.job == 'hot' && '-hot' || '' }}${{ startsWith(inputs.job, 'base_') && '-base' || '' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: vars.RFFM_ADAPTER_DISABLED != 'true'
+    defaults:
+      run:
+        working-directory: scrapers
+    steps:
+      - name: Guardia de horario y selección de job
+        id: pick
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_JOB: ${{ inputs.job }}
+        working-directory: .
+        run: |
+          H=$(TZ=Europe/Madrid date +%-H); M=$(TZ=Europe/Madrid date +%-M); MIN=$((H * 60 + M))
+          case "$SCHEDULE" in
+            '')                              JOB="$INPUT_JOB"; RUN=true ;;
+            '4,14,24,34,44,54 7-21 * * 6,0') JOB=live;     [ $MIN -ge 540 ] && [ $MIN -le 1350 ] && RUN=true || RUN=false ;;
+            '7 6-22 * * 1-5')                JOB=live;     [ "$H" -ge 8 ] && [ "$H" -le 23 ] && RUN=true || RUN=false ;;
+            '17 4,5 * * *')                  JOB=daily;    [ "$H" = 6 ] && RUN=true || RUN=false ;;
+            '23 6,7 * * 1')                  JOB=closing;  [ "$H" = 8 ] && RUN=true || RUN=false ;;
+            '37 1,2 * * 1')                  JOB=calendar,crests; [ "$H" = 3 ] && RUN=true || RUN=false ;;
+          esac
+          echo "job=$JOB run=$RUN (Madrid $H:$M)"
+          echo "job=$JOB" >> "$GITHUB_OUTPUT"
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
+      # Directo sin partidos en juego o a punto de empezar: se sale antes de instalar nada
+      # (el repo es privado y cada minuto de runner cuenta).
+      - name: ¿Hay partidos ahora?
+        id: busy
+        if: steps.pick.outputs.run == 'true' && (steps.pick.outputs.job == 'live' || steps.pick.outputs.job == 'hot' || steps.pick.outputs.job == 'base_live')
+        working-directory: .
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB: ${{ steps.pick.outputs.job }}
+        run: |
+          # live/hot miran solo senior y femenino; base_live, solo base (cada familia de jobs ignora los partidos de la otra).
+          if [ "$JOB" = base_live ]; then SEG='base,femenino-base'; FROM=$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ); TO=$(date -u -d '+10 minutes' +%Y-%m-%dT%H:%M:%SZ)
+          else SEG='senior,femenino'; FROM=$(date -u -d '-4 hours' +%Y-%m-%dT%H:%M:%SZ); TO=$(date -u -d '+20 minutes' +%Y-%m-%dT%H:%M:%SZ); fi
+          N=$(curl -sS -o /dev/null -D - -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Prefer: count=exact" -H "Range: 0-0" \
+            "$SUPABASE_URL/rest/v1/matches?select=id,competitions!inner(segment)&competitions.segment=in.($SEG)&status=in.(scheduled,live)&and=(kickoff_at.gte.$FROM,kickoff_at.lt.$TO)" \
+            | tr -d '\r' | awk -F/ 'tolower($1) ~ /^content-range/ {print $2}')
+          echo "partidos en ventana [$FROM, $TO): ${N:-?}"
+          if [ "${N:-1}" = "0" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.pick.outputs.run == 'true' && steps.busy.outputs.run != 'false'
+
+      - uses: actions/setup-python@v5
+        if: steps.pick.outputs.run == 'true' && steps.busy.outputs.run != 'false'
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: Caché de hashes de contenido
+        if: steps.pick.outputs.run == 'true' && steps.busy.outputs.run != 'false'
+        uses: actions/cache@v4
+        with:
+          path: scrapers/.cache
+          key: rffm-hashes-${{ github.run_id }}
+          restore-keys: rffm-hashes-
+
+      - name: Dependencias
+        if: steps.pick.outputs.run == 'true' && steps.busy.outputs.run != 'false'
+        run: pip install -r requirements.txt
+
+      - name: Tests con fixtures
+        if: steps.pick.outputs.run == 'true' && steps.pick.outputs.job != 'live' && steps.pick.outputs.job != 'hot' && steps.pick.outputs.job != 'base_live'
+        run: python -m pytest -q
+
+      - name: Ingesta
+        if: steps.pick.outputs.run == 'true' && steps.busy.outputs.run != 'false'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SCRAPER_CACHE_DIR: .cache
+          # Directo: 2 s entre peticiones (mínimo acordado) para que la pasada quepa en la ventana de 10 min.
+          SCRAPER_MIN_INTERVAL: ${{ (steps.pick.outputs.job == 'live' || steps.pick.outputs.job == 'hot') && '2' || '3' }}
+        # Los jobs de base llevan tope de peticiones (~3 s cada una): terminan limpios dentro del timeout y la siguiente
+        # ejecución continúa donde quedó. Calendario, diario y cierre: 1500 (~75 min); directo: 600 (~30 min).
+        run: |
+          JOB='${{ steps.pick.outputs.job }}'
+          case "$JOB" in
+            hot)                              EXTRA='--loop-seconds 1500 --every 45' ;;
+            base_calendar|base_daily|base_closing) EXTRA='--max-requests 1500 --max-minutes 100' ;;
+            base_live)                        EXTRA='--max-requests 600 --max-minutes 40' ;;
+            *)                                EXTRA='' ;;
+          esac
+          python run.py --job "$JOB" $EXTRA

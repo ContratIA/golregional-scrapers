@@ -1,0 +1,7 @@
+# robots.txt de ejemplo con la misma forma que el de la RFFM
+User-agent: *
+Allow: /
+
+Disallow: /fichaequipo/
+Disallow: /fichajugador/
+Disallow: /acta-partido/
