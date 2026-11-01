@@ -388,9 +388,33 @@ class RffmPipeline:
             if prior and match.home_goals is None and prior["data_source"] != "official" and prior["home_goals"] is not None:
                 row.update(home_goals=prior["home_goals"], away_goals=prior["away_goals"], data_source=prior["data_source"], status=prior.get("status") or "finished")
             rows.append(row)
+        self._unique_match_slugs(rows)
         self.db.upsert("matches", rows, on_conflict="competition_id,source_code", select="id")
         stats.matches += len(rows)
         return current_round
+
+    def _unique_match_slugs(self, rows: list[dict]) -> None:
+        """`matches.slug` es único en toda la tabla. En base, el mismo "CD X A - CD Y B" se juega el mismo día en varias
+        categorías y daba 409 Conflict (jornadas enteras sin guardar). El primero que llega conserva su slug; el resto
+        lleva el id de su competición (y, si aún choca dentro de la misma tanda, el código de la fuente)."""
+        if not rows:
+            return
+        owners: dict[str, tuple] = {}
+        wanted = sorted({s for r in rows for s in (r["slug"], f"{r['slug']}-{r['competition_id']}")})
+        for i in range(0, len(wanted), 50):
+            chunk = ",".join(wanted[i : i + 50])
+            for m in self.db.select("matches", slug=f"in.({chunk})", select="slug,competition_id,source_code"):
+                owners[m["slug"]] = (m["competition_id"], m["source_code"])
+        taken: set[str] = set()
+        for row in rows:
+            key = (row["competition_id"], row["source_code"])
+            candidate = row["slug"]
+            if owners.get(candidate, key) != key or candidate in taken:
+                candidate = f"{row['slug']}-{row['competition_id']}"
+                if owners.get(candidate, key) != key or candidate in taken:
+                    candidate = f"{candidate}-{row['source_code']}"
+            row["slug"] = candidate
+            taken.add(candidate)
 
     def _match_slug(self, match: MatchIn) -> str:
         day = match.kickoff_at.date().isoformat() if match.kickoff_at else f"jornada-{match.round}"

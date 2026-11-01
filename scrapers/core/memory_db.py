@@ -34,7 +34,7 @@ class MemoryDb:
         self.tables: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self._ids = defaultdict(lambda: itertools.count(1))
         # Restricciones únicas relevantes para detectar conflictos (409) como PostgREST.
-        self.unique = {"teams": [("slug",), ("federation_id", "source_code")], "team_aliases": [("alias_normalized", "team_id")]}
+        self.unique = {"matches": [("slug",), ("competition_id", "source_code")], "teams": [("slug",), ("federation_id", "source_code")], "team_aliases": [("alias_normalized", "team_id")]}
 
         self.storage: dict[str, dict[str, tuple[bytes, str]]] = defaultdict(dict)
 

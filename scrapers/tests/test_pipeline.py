@@ -424,3 +424,24 @@ def test_crest_blanco_y_negro_deja_los_colores_en_null():
     p.job_crests(stats)
     assert not stats.anomalies and stats.crests == 18
     assert all(c.get("primary_color") is None for c in db.tables["clubs"])
+
+
+def test_slug_de_partido_repetido_en_otra_categoria_no_da_409():
+    """Mismo "CD X A - CD Y B" el mismo día en dos categorías: antes 409 Conflict y la jornada entera sin guardar."""
+    from core.memory_db import MemoryDb
+    from pipeline import RffmPipeline
+
+    pipe = RffmPipeline.__new__(RffmPipeline)
+    pipe.db = MemoryDb()
+    row = lambda comp, code: {"competition_id": comp, "source_code": code, "slug": "cd-x-a-cd-y-b-2026-11-01"}  # noqa: E731
+    first = [row(1, "a")]
+    pipe._unique_match_slugs(first)
+    pipe.db.upsert("matches", first, on_conflict="competition_id,source_code")
+    second = [row(2, "b"), row(2, "c")]  # otra categoría, y dos veces en la misma tanda
+    pipe._unique_match_slugs(second)
+    pipe.db.upsert("matches", second, on_conflict="competition_id,source_code")  # no debe lanzar 409
+    assert first[0]["slug"] == "cd-x-a-cd-y-b-2026-11-01"
+    assert len({r["slug"] for r in first + second}) == 3
+    again = [row(1, "a")]  # la misma fila otra vez conserva su slug
+    pipe._unique_match_slugs(again)
+    assert again[0]["slug"] == "cd-x-a-cd-y-b-2026-11-01"
