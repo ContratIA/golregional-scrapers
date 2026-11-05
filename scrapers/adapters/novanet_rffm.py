@@ -229,7 +229,7 @@ class NovanetMapper:
         kind = str(competition.get("tipo_competicion") or "")
         # La RFFM publica la Copa de Aficionados como tipo 1; no abrir el resto de eliminatorias.
         if kind == "1":
-            if "COPA DE AFICIONADOS RFFM" in label:
+            if "COPA DE AFICIONADOS" in label:
                 return RFFM_CUP_CATEGORY
             return None
         if kind != "2":
