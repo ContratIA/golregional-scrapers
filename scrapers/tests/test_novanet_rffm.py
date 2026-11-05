@@ -107,6 +107,7 @@ def test_only_senior_competitions_selected(fixture_html):
         "26738262": "preferente-femenino",
         "26738233": "campeonato-universitario-masculino",
         "26738236": "campeonato-universitario-femenino",
+        "28733581": "copa-aficionados-rffm",
     }
 
 
