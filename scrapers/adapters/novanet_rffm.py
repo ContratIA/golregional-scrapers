@@ -75,13 +75,23 @@ class CategoryConfig:
     age_group: str | None = None
 
 
-# Solo competiciones senior. Cualquier categoría no listada aquí se ignora.
+# Competiciones senior con calendario propio. Se incluyen la Copa de Aficionados y los
+# campeonatos universitarios publicados por la RFFM.
 RFFM_SENIOR_CATEGORIES = (
     CategoryConfig("TERCERA FEDERACION", "Tercera Federación", "tercera-federacion", 5),
     CategoryConfig("PRIMERA DIVISION AUTONOMICA AFICIONADO", "Primera Autonómica", "primera-autonomica", 6),
     CategoryConfig("PREFERENTE AFICIONADO", "Preferente", "preferente", 7),
     CategoryConfig("PRIMERA AFICIONADO", "Primera Regional", "primera-regional", 8),
     CategoryConfig("SEGUNDA AFICIONADO", "Segunda Regional", "segunda-regional", 9),
+    CategoryConfig("CAMPEONATO UNIVERSITARIO MASCULINO", "Campeonato Universitario Masculino", "campeonato-universitario-masculino", 10),
+    CategoryConfig("CAMPEONATO UNIVERSITARIO FEMENINO", "Campeonato Universitario Femenino", "campeonato-universitario-femenino", 10, "femenino"),
+)
+
+RFFM_CUP_CATEGORY = CategoryConfig(
+    "COPA DE AFICIONADOS RFFM 2026/2027",
+    "Copa de Aficionados RFFM",
+    "copa-aficionados-rffm",
+    10,
 )
 
 # Fútbol femenino absoluto (decisión 2026-10-31). Las categorías femeninas de base (cadete, juvenil,
@@ -215,9 +225,15 @@ class NovanetMapper:
         )
 
     def senior_category(self, competition: dict) -> CategoryConfig | None:
-        if competition.get("tipo_competicion") != "2":  # 2 = liga; copas/eliminatorias fuera
+        label = _fold(f"{competition.get('nombre', '')} {competition.get('NombreCategoria', '')}")
+        kind = str(competition.get("tipo_competicion") or "")
+        # La RFFM publica la Copa de Aficionados como tipo 1; no abrir el resto de eliminatorias.
+        if kind == "1":
+            if "COPA DE AFICIONADOS RFFM" in label:
+                return RFFM_CUP_CATEGORY
             return None
-        label = f"{competition.get('nombre', '')} {competition.get('NombreCategoria', '')}".upper()
+        if kind != "2":
+            return None
         # La Copa RFEF fase autonómica viene como tipo 2 bajo la categoría Tercera Federación.
         if is_youth(label) or "COPA" in label:
             return None
