@@ -78,7 +78,7 @@ def game_code(competition: dict) -> str:
     return GAME_TYPE_CODE.get(competition.get("game_type") or "f11", "1")
 CREST_BUCKET = "crests"
 CREST_SIZE = 128
-_TEAM_LETTER = re.compile(r"\s+[A-F]$")
+_TEAM_LETTER = re.compile(r"\s+[A-Z]$")
 
 
 class NotAnImage(Exception):
