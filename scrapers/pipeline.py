@@ -421,6 +421,8 @@ class RffmPipeline:
         return f"{slug(display_team_name(match.home.name))}-{slug(display_team_name(match.away.name))}-{day}"
 
     def sync_standings(self, competition: dict, round_number: int | None, stats: RunStats) -> None:
+        if competition.get("category_slug") == "copa-aficionados-rffm":
+            return  # La Copa se disputa por eliminatorias y no tiene clasificación de liga.
         season = self.season or self.sync_season()
         context = {"competition_id": competition["id"], "round": round_number, "segment": competition.get("segment")}
         raw, _ = self.transport.standings(
