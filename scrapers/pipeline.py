@@ -698,12 +698,19 @@ class RffmPipeline:
         self.db.ensure_bucket(CREST_BUCKET)
 
         crest_by_code: dict[str, str] = {}
-        for competition in self.competitions():
+        # La versión anterior solo recorría senior y femenino absoluto. Los escudos de la cantera
+        # también están publicados en las clasificaciones oficiales de la RFFM.
+        all_segments = (*ADULT_SEGMENTS, *BASE_SEGMENTS)
+        for competition in self.competitions(segments=all_segments):
             with self._capture(stats, competition_id=competition["id"], what="crests"):
                 raw, _ = self.transport.standings(season["source_code"], competition["source_code"], competition["group_source_code"])
                 for row in raw.get("clasificacion") or []:
-                    url = self.mapper.crest(row.get("url_img"))
-                    if url and row.get("codequipo") and "default" not in url.lower():
+                    source_path = row.get("url_img")
+                    url = self.mapper.crest(source_path)
+                    # Evita guardar HTML de rutas vacías/rotas como si fuera un escudo real.
+                    # El origen debe ser el directorio oficial de imágenes de equipos de RFFM.
+                    is_official_image = bool(source_path and "pimg/" in source_path.lower())
+                    if url and is_official_image and row.get("codequipo") and "default" not in url.lower():
                         # Se conserva el ?nova=1 del payload: sin él la RFFM responde HTML.
                         crest_by_code[row["codequipo"]] = url
 
