@@ -31,7 +31,9 @@ class FakeTransport:
     def competitions(self, season, game_type=None):
         if game_type not in (None, "1"):
             return []  # la RFFM devuelve las competiciones de cada modalidad por separado
-        return _next("standings_pref_g1_j1.html", "competitions")
+        # Integración senior/femenino histórica; el mapeo de las nuevas categorías
+        # se cubre con pruebas específicas de RFFM.
+        return [c for c in _next("standings_pref_g1_j1.html", "competitions") if c["codigo"] not in ("28733581", "26738233", "26738236")]
 
     def groups(self, season, competition, game_type=None):
         return json.loads((FIXTURES / f"groups_{competition}.json").read_text(encoding="utf-8")) if competition != "26737701" else [

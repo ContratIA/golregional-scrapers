@@ -58,8 +58,8 @@ def test_adultos_y_fuera_de_alcance_no_son_base():
     for code in adult:
         assert mapper.base_category(by_code[code]) is None, code
         assert mapper.senior_category(by_code[code]) is not None, code
-    # copas, fútbol inclusivo, andando y campeonatos universitarios: ni adultos ni base
-    for code in ("26738289", "28733581", "27957934", "28777685", "26738376", "26738236", "26738233"):
+    # copas distintas de Aficionados, fútbol inclusivo y andando quedan fuera.
+    for code in ("26738289", "27957934", "28777685", "26738376"):
         assert mapper.base_category(by_code[code]) is None, code
         assert mapper.senior_category(by_code[code]) is None, code
 

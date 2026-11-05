@@ -105,6 +105,8 @@ def test_only_senior_competitions_selected(fixture_html):
         "27786100": "tercera-federacion-femenino",
         "26738252": "primera-autonomica-femenino",
         "26738262": "preferente-femenino",
+        "26738233": "campeonato-universitario-masculino",
+        "26738236": "campeonato-universitario-femenino",
     }
 
 
@@ -156,10 +158,9 @@ def test_femenino_real_fixture_se_mapea(fixture_html):
         # Femenino de base y competiciones femeninas no incluidas
         {"tipo_competicion": "2", "nombre": "PRIMERA FEMENINO JUVENIL", "NombreCategoria": "PRIMERA FEMENINO JUVENIL"},
         {"tipo_competicion": "2", "nombre": "PREFERENTE FEMENINO CADETE", "NombreCategoria": "PREFERENTE FEMENINO CADETE"},
-        {"tipo_competicion": "2", "nombre": "CAMPEONATO UNIVERSITARIO FEMENINO", "NombreCategoria": "CAMPEONATO UNIVERSITARIO FEMENINO"},
     ],
 )
-def test_youth_and_cups_rejected_even_if_misconfigured(competition):
+def test_youth_and_unrecognized_cups_rejected_even_if_misconfigured(competition):
     assert mapper.senior_category(competition) is None
 
 
@@ -219,3 +220,12 @@ def test_persistent_null_results_raise():
 def test_missing_next_data_raises():
     with pytest.raises(SelectorEmpty):
         extract_next_data("<html><body>mantenimiento</body></html>")
+
+
+def test_copa_aficionados_reconocida_solo_como_categoria_propia(fixture_html):
+    competitions = json.loads(fixture_html("competitions_f11_2026-10-31.json"))
+    cup = next(c for c in competitions if c["codigo"] == "28733581")
+    category = mapper.senior_category(cup)
+    assert category is not None
+    assert (category.name, category.category_slug, category.segment) == ("Copa de Aficionados RFFM", "copa-aficionados-rffm", "senior")
+    assert mapper.senior_category({"tipo_competicion": "1", "nombre": "COPA", "NombreCategoria": "TERCERA FEDERACION"}) is None
