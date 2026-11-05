@@ -447,3 +447,11 @@ def test_slug_de_partido_repetido_en_otra_categoria_no_da_409():
     again = [row(1, "a")]  # la misma fila otra vez conserva su slug
     pipe._unique_match_slugs(again)
     assert again[0]["slug"] == "cd-x-a-cd-y-b-2026-11-01"
+
+
+def test_copa_no_consulta_clasificacion():
+    p, _ = pipeline()
+    stats = RunStats("daily", 0)
+    p.sync_standings({"category_slug": "copa-aficionados-rffm"}, None, stats)
+    assert stats.standings == 0
+    assert not stats.anomalies
